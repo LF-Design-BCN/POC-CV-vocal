@@ -1,25 +1,28 @@
-import { kv } from "@vercel/kv";
+import { Redis } from "@upstash/redis";
 import type { CVData } from "./schema";
 
-// Stockage clé/valeur via Vercel KV. Nécessite d'ajouter l'intégration
-// "KV" (Storage > KV) sur ton projet Vercel : elle injecte automatiquement
-// les variables d'env KV_REST_API_URL / KV_REST_API_TOKEN.
-// En local, `vercel env pull` récupère ces mêmes variables dans .env.local.
+// Stockage clé/valeur via Upstash Redis (le remplaçant de l'ex-Vercel KV,
+// retiré du marketplace). Sur Vercel : Storage → Marketplace → chercher
+// "Upstash" → installer l'intégration Redis → la lier au projet.
+// Ça injecte automatiquement UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN.
+// En local : `vercel env pull .env.local` récupère ces mêmes variables.
+
+const redis = Redis.fromEnv();
 
 export async function saveProfile(id: string, data: CVData) {
-  await kv.set(`profile:${id}`, data);
+  await redis.set(`profile:${id}`, data);
 }
 
 export async function loadProfile(id: string): Promise<CVData | null> {
-  const data = await kv.get<CVData>(`profile:${id}`);
+  const data = await redis.get<CVData>(`profile:${id}`);
   return data ?? null;
 }
 
 export async function saveLetter(id: string, lettre: string) {
-  await kv.set(`letter:${id}`, lettre);
+  await redis.set(`letter:${id}`, lettre);
 }
 
 export async function loadLetter(id: string): Promise<string | null> {
-  const data = await kv.get<string>(`letter:${id}`);
+  const data = await redis.get<string>(`letter:${id}`);
   return data ?? null;
 }
