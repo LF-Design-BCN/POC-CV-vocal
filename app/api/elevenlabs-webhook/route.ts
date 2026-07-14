@@ -26,6 +26,26 @@ function verifySignature(rawBody: string, signatureHeader: string | null) {
   );
 }
 
+// La "Data Collection" d'ElevenLabs ne supporte que des types plats
+// (Boolean, Integer, Number, String) — pas d'objets ni de tableaux imbriqués.
+// On demande donc les champs complexes sous forme de String contenant du
+// JSON stringifié (ex: experiences_json), qu'on parse ici nous-même.
+// Voir le tableau de config dans le README pour la liste exacte des champs
+// à créer côté dashboard ElevenLabs.
+
+function safeParseArray<T>(raw: unknown, fallback: T[] = []): T[] {
+  if (typeof raw !== "string" || raw.trim() === "") return fallback;
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : fallback;
+  } catch {
+    // Le modèle d'extraction n'a pas renvoyé du JSON valide : on ne bloque
+    // pas tout le profil pour ça, on retombe sur un tableau vide pour ce
+    // champ. Pense à vérifier ces cas dans tes logs pendant la mise au point.
+    return fallback;
+  }
+}
+
 function mapWebhookPayloadToCVData(payload: any): {
   sessionId: string | null;
   data: CVData;
@@ -41,13 +61,19 @@ function mapWebhookPayloadToCVData(payload: any): {
       ?.session_id ?? payload?.conversation_id ?? null;
 
   const raw = {
-    contact: collected.contact ?? {},
+    contact: {
+      nom: collected.contact_nom ?? "",
+      telephone: collected.contact_telephone ?? "",
+      email: collected.contact_email ?? "",
+    },
     secteur_recherche: collected.secteur_recherche ?? "",
-    resume_profil: collected.resume_profil,
-    experiences: collected.experiences ?? [],
-    formations: collected.formations ?? [],
-    competences: collected.competences ?? { outils: [], langues: [] },
-    hobbies: collected.hobbies ?? [],
+    experiences: safeParseArray(collected.experiences_json),
+    formations: safeParseArray(collected.formations_json),
+    competences: {
+      outils: safeParseArray(collected.outils_json),
+      langues: safeParseArray(collected.langues_json),
+    },
+    hobbies: safeParseArray<string>(collected.hobbies_json),
   };
 
   return { sessionId, data: CVDataSchema.parse(raw) };
