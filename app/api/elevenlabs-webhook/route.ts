@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Décommente pendant la mise au point pour voir la vraie forme du payload :
-  // console.log(JSON.stringify(payload, null, 2));
+  console.log(JSON.stringify(payload, null, 2));
 
   const { sessionId, data } = mapWebhookPayloadToCVData(payload);
 
