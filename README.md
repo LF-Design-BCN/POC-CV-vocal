@@ -27,19 +27,27 @@ vercel link
 vercel env pull .env.local
 ```
 
-## 3. Config côté ElevenLabs (dans leur dashboard, pas dans ce repo)
+## 3. Téléphonie réelle (Twilio) : en pause
 
-Cette partie ne se code pas ici : elle se configure dans ton compte ElevenLabs,
-section "Conversational AI".
+L'appel téléphonique réel via Twilio nécessite un compte business vérifié
+(regulatory bundle) pour obtenir un numéro, ce qui n'est pas encore possible.
+En attendant, le POC repose sur le **widget web ElevenLabs** (conversation
+dans le navigateur, micro du visiteur). Le code lié à Twilio a été retiré
+pour l'instant ; les variables d'environnement correspondantes sont
+commentées dans `.env.example` si tu veux reprendre ce chantier plus tard.
 
-1. **Créer un agent.**
-2. **Rédiger le prompt système** de l'agent. Il doit couvrir, dans l'ordre,
-   les 4 thématiques : secteur recherché, expériences professionnelles,
-   diplômes/formations, compétences (outils + langues) et hobbies. Donne-lui
-   pour instruction de reformuler et de relancer si une réponse est vague
-   ("tu as dit avoir géré une équipe, combien de personnes ?"), et de ne pas
-   couper la parole trop vite.
-3. **Activer la "Data collection"** (parfois appelée post-call analysis) et
+## 4. Config de l'agent (prompt, data collection, webhook)
+
+1. **Rédiger le prompt système** de l'agent. Il doit couvrir, dans l'ordre,
+   les 6 thématiques : secteur recherché, expériences professionnelles,
+   diplômes/formations, compétences (outils + langues), hobbies, coordonnées.
+   Prévoir aussi : un ton chaleureux et réactif, un bloc commercial à
+   mi-parcours personnalisé selon le profil, et une clôture avec résumé +
+   offre exclusive à effet spontané pour les premières fois. Utiliser les
+   dynamic variables `{{prenom}}`, `{{nom}}` et `{{linkedin_url}}` (transmises
+   depuis le formulaire du site) pour personnaliser le premier message et la
+   vérification des coordonnées.
+2. **Activer la "Data collection"** (parfois appelée post-call analysis) et
    définir des champs à extraire. Important : ElevenLabs ne propose que des
    types plats (Boolean, Integer, Number, String) — pas d'objets ni de
    tableaux imbriqués. Les champs complexes doivent donc être demandés en
@@ -58,47 +66,56 @@ section "Conversational AI".
    | `langues_json` | String | Tableau JSON stringifié des langues mentionnées avec niveau. Chaque élément est un objet avec nom, niveau. Retourne uniquement du JSON valide. |
    | `hobbies_json` | String | Tableau JSON stringifié des centres d'intérêt mentionnés (simple liste de strings). Retourne uniquement du JSON valide. |
 
-   C'est ce qui permet à ElevenLabs de te renvoyer des données structurées
-   à la fin de l'appel plutôt qu'un simple transcript. Si le modèle
-   d'extraction ne renvoie pas du JSON valide pour un champ, notre webhook
-   retombe sur un tableau vide pour ce champ plutôt que de tout faire
-   échouer — vérifie les logs pendant la mise au point pour repérer ces cas.
-4. **Configurer le webhook post-appel** vers :
+   Si le modèle d'extraction ne renvoie pas du JSON valide pour un champ,
+   notre webhook retombe sur un tableau vide pour ce champ plutôt que de
+   tout faire échouer — vérifie les logs pendant la mise au point.
+3. **Configurer le webhook post-appel** vers :
    `https://<ton-domaine-vercel>/api/elevenlabs-webhook`
    Renseigne un secret de signature et mets-le dans `ELEVENLABS_WEBHOOK_SECRET`.
-5. Récupère l'**Agent ID** et mets-le dans `NEXT_PUBLIC_ELEVENLABS_AGENT_ID`.
 
 Pour tester avant d'avoir déployé sur Vercel, il faut exposer ton
 `localhost:3000` publiquement (par exemple avec `ngrok http 3000`) pour
 qu'ElevenLabs puisse appeler ton webhook.
 
 ⚠️ La structure exacte du payload webhook (noms de champs dans
-`analysis.data_collection_results`, endroit où passent tes dynamic variables)
-peut avoir légèrement changé depuis l'écriture de ce POC. La première fois,
-décommente le `console.log` dans
+`analysis.data_collection_results`) peut avoir légèrement changé depuis
+l'écriture de ce POC. La première fois, décommente le `console.log` dans
 `app/api/elevenlabs-webhook/route.ts` pour voir le payload réel et ajuster
-`mapWebhookPayloadToCVData` si besoin. Doc à jour :
-https://elevenlabs.io/docs/conversational-ai/workflows/post-call-webhooks
+`mapWebhookPayloadToCVData` si besoin.
 
-## 4. Parcours utilisateur du POC
+## 5. Parcours utilisateur du POC
 
-1. `/` — la personne clique sur le widget vocal et répond aux questions.
-2. À la fin de l'appel, ElevenLabs POST son analyse sur
-   `/api/elevenlabs-webhook`, qui sauvegarde un profil dans Upstash Redis.
-3. La personne est redirigée (à faire : rediriger automatiquement depuis le
-   widget une fois l'appel terminé, ou lui donner le lien) vers
-   `/result/<session_id>`.
-4. Cette page affiche le CV généré à partir du template fixe, avec un bouton
-   pour générer la lettre de motivation via Claude.
+1. `/` — la personne renseigne prénom, nom, téléphone et (optionnel) son
+   lien LinkedIn, puis clique sur "Continuer".
+2. Elle est redirigée vers `/conversation/<session_id>?prenom=...&nom=...`,
+   qui affiche le widget vocal ElevenLabs en mode compact (juste la boule +
+   bouton "Démarrer l'appel", sans panneau de transcript). Si le mode
+   compact affiche encore les messages, vérifie l'onglet **Widget** de
+   l'agent dans le dashboard ElevenLabs pour un réglage d'affichage du
+   transcript.
+3. Elle clique sur "Démarrer l'appel", autorise le micro, et répond aux
+   questions de l'agent.
+4. À la fin de la conversation, ElevenLabs POST son analyse sur
+   `/api/elevenlabs-webhook`.
+5. Le webhook sauvegarde le profil dans Upstash Redis, **puis génère
+   automatiquement la lettre de motivation** (ciblée sur le secteur mentionné
+   pendant l'appel) et la sauvegarde aussi — sans action manuelle.
+6. La personne clique sur "J'ai terminé — voir mon CV" (lien affiché sous le
+   widget) pour arriver sur `/result/<session_id>` : elle y voit son CV et
+   sa lettre déjà prêts, avec la possibilité de régénérer la lettre en
+   ciblant une offre précise.
 
-## 5. Limites volontaires de ce POC
+## 6. Limites volontaires de ce POC
 
-- Un seul template de CV, pas de choix multiple.
-- Pas d'import LinkedIn.
+- Un seul template de CV (basique), pas de choix multiple.
+- Le lien LinkedIn est simplement stocké/mentionné à l'oral, pas encore
+  analysé automatiquement (LinkedIn ne propose pas d'API publique adaptée à
+  ça — voir discussion précédente).
 - Export "PDF" = impression navigateur, pas de génération PDF côté serveur.
-- Pas de vrai appel téléphonique (Twilio) : le widget tourne dans le
-  navigateur.
+- Pas de vrai appel téléphonique (Twilio en pause, voir section 3) : la
+  conversation se fait dans le navigateur.
+- Pas de détection automatique de fin d'appel côté navigateur : la personne
+  clique elle-même sur le lien "voir mon CV" une fois terminé.
 
 Toutes ces limites sont des choix pour valider vite le principe de bout en
-bout ; chacune peut être levée dans une V2 une fois la conversation vocale
-validée.
+bout ; chacune peut être levée dans une V2 une fois le principe validé.
