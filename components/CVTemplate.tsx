@@ -25,6 +25,18 @@ export default function CVTemplate({ data }: { data: CVData }) {
             .filter(Boolean)
             .join(" · ")}
         </p>
+        {data.contact?.linkedin && (
+          <p style={{ margin: "2px 0 0", fontSize: 13 }}>
+            <a
+              href={data.contact.linkedin}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: "#5F5E5A" }}
+            >
+              {data.contact.linkedin}
+            </a>
+          </p>
+        )}
       </header>
 
       {data.resume_profil && (
