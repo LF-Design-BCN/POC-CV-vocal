@@ -16,15 +16,37 @@ function verifySignature(rawBody: string, signatureHeader: string | null) {
   if (!secret) return true; // POC : pas de secret configuré, on ne vérifie pas
   if (!signatureHeader) return false;
 
+  // Format réel du header : "t=<timestamp_unix>,v0=<signature_hex>"
+  // (parfois "v1=" selon la version) — le message signé est
+  // "<timestamp>.<corps_brut>", pas le corps seul.
+  const parts = new Map(
+    signatureHeader.split(",").map((p) => {
+      const [key, ...val] = p.split("=");
+      return [key, val.join("=")] as [string, string];
+    })
+  );
+
+  const timestamp = parts.get("t");
+  const signature = parts.get("v0") ?? parts.get("v1");
+
+  if (!timestamp || !signature) return false;
+
+  const signedPayload = `${timestamp}.${rawBody}`;
   const expected = crypto
     .createHmac("sha256", secret)
-    .update(rawBody)
+    .update(signedPayload)
     .digest("hex");
 
-  return crypto.timingSafeEqual(
-    Buffer.from(expected),
-    Buffer.from(signatureHeader)
-  );
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(expected, "hex"),
+      Buffer.from(signature, "hex")
+    );
+  } catch {
+    // Longueurs différentes (signature malformée) : on rejette proprement
+    // plutôt que de laisser l'exception faire planter la fonction.
+    return false;
+  }
 }
 
 // La "Data Collection" d'ElevenLabs ne supporte que des types plats
