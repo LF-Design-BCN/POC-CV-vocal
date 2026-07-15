@@ -4,34 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Script from "next/script";
 
-type OrbState = "connecting" | "active" | "ended";
-
-function Orb({ state }: { state: OrbState }) {
-  return (
-    <>
-      <style>{`
-        @keyframes cv-orb-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        @keyframes cv-orb-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
-      `}</style>
-      <div
-        style={{
-          width: 220,
-          height: 220,
-          borderRadius: "50%",
-          background: "conic-gradient(from 0deg, #1B2A4A, #6EC1E4, #1B2A4A)",
-          filter: "blur(1px)",
-          opacity: state === "ended" ? 0.4 : 1,
-          transition: "opacity 0.4s",
-          animation:
-            state === "active"
-              ? "cv-orb-spin 6s linear infinite, cv-orb-pulse 2.4s ease-in-out infinite"
-              : "cv-orb-spin 12s linear infinite",
-        }}
-      />
-    </>
-  );
-}
-
 export default function ConversationPage({ params }: { params: { id: string } }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -42,7 +14,6 @@ export default function ConversationPage({ params }: { params: { id: string } })
   const [scriptLoaded, setScriptLoaded] = useState(false);
   const [scriptError, setScriptError] = useState(false);
   const [ready, setReady] = useState(false);
-  const [orbState, setOrbState] = useState<OrbState>("connecting");
   const [showFallback, setShowFallback] = useState(false);
   const [linkedinSummary, setLinkedinSummary] = useState("");
   const [linkedinUrl, setLinkedinUrl] = useState("");
@@ -57,17 +28,42 @@ export default function ConversationPage({ params }: { params: { id: string } })
     setReady(true);
   }, [params.id]);
 
+  // Centrage du widget : on garde `position: fixed` (probablement requis par
+  // son fonctionnement interne — le display:none et le passage en `relative`
+  // ont tous les deux cassé son fonctionnement dans les tentatives
+  // précédentes), et on centre avec inset+margin:auto plutôt qu'un
+  // transform, pour ne pas entrer en conflit avec ses propres animations.
+  useEffect(() => {
+    if (!scriptLoaded) return;
+    const style = document.createElement("style");
+    style.setAttribute("data-cv-vocal-override", "true");
+    style.textContent = `
+      #cv-vocal-widget {
+        position: fixed !important;
+        inset: 0 !important;
+        margin: auto !important;
+        width: 360px !important;
+        height: 360px !important;
+        --elevenlabs-convai-widget-width: 360px;
+        --elevenlabs-convai-widget-height: 360px;
+      }
+    `;
+    const t = setTimeout(() => document.head.appendChild(style), 200);
+    return () => {
+      clearTimeout(t);
+      style.remove();
+    };
+  }, [scriptLoaded]);
+
   useEffect(() => {
     if (!ready || !scriptLoaded || !widgetRef.current) return;
     const widget = widgetRef.current;
 
     const onStarted = () => {
       startedRef.current = true;
-      setOrbState("active");
       setShowFallback(false);
     };
     const onEnded = () => {
-      setOrbState("ended");
       router.push(`/loading/${params.id}`);
     };
 
@@ -82,9 +78,6 @@ export default function ConversationPage({ params }: { params: { id: string } })
       }
     }, 400);
 
-    // Si l'auto-démarrage échoue silencieusement (permission micro refusée,
-    // widget pas encore prêt...), on affiche un bouton de secours après
-    // quelques secondes plutôt que de laisser un écran bloqué sans recours.
     const fallbackTimeout = setTimeout(() => {
       if (!startedRef.current) setShowFallback(true);
     }, 4000);
@@ -139,9 +132,7 @@ export default function ConversationPage({ params }: { params: { id: string } })
             </p>
           )}
 
-          <Orb state={orbState} />
-
-          {showFallback && orbState === "connecting" && (
+          {showFallback && (
             <button
               onClick={demarrerManuellement}
               style={{
@@ -151,30 +142,29 @@ export default function ConversationPage({ params }: { params: { id: string } })
                 color: "white",
                 borderRadius: 8,
                 cursor: "pointer",
+                position: "relative",
+                zIndex: 10,
               }}
             >
               Démarrer l'appel
             </button>
           )}
 
-          {/* Widget réel : jamais affiché, mais toujours fonctionnel en
-              arrière-plan (le display:none n'empêche pas l'audio/WebRTC). */}
-          <div style={{ display: "none" }}>
-            {/* @ts-ignore - custom element ElevenLabs, pas typé par React */}
-            <elevenlabs-convai
-              ref={widgetRef}
-              agent-id={agentId}
-              variant="compact"
-              dynamic-variables={JSON.stringify({
-                session_id: params.id,
-                prenom,
-                nom,
-                telephone,
-                linkedin_url: linkedinUrl,
-                linkedin_summary: linkedinSummary,
-              })}
-            />
-          </div>
+          {/* @ts-ignore - custom element ElevenLabs, pas typé par React */}
+          <elevenlabs-convai
+            id="cv-vocal-widget"
+            ref={widgetRef}
+            agent-id={agentId}
+            variant="compact"
+            dynamic-variables={JSON.stringify({
+              session_id: params.id,
+              prenom,
+              nom,
+              telephone,
+              linkedin_url: linkedinUrl,
+              linkedin_summary: linkedinSummary,
+            })}
+          />
         </>
       )}
     </main>
