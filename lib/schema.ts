@@ -35,6 +35,7 @@ export const CVDataSchema = z.object({
       nom: z.string().optional(),
       telephone: z.string().optional(),
       email: z.string().optional(),
+      linkedin: z.string().optional(),
     })
     .default({}),
   secteur_recherche: z.string().default(""),
