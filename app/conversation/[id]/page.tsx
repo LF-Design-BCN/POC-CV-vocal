@@ -1,138 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { ConversationProvider, useConversation } from "@elevenlabs/react";
-import { Orb, type AgentState } from "@/components/ui/orb";
-
-// Le composant Orb officiel utilise deux classes utilitaires ("relative",
-// "h-full", "w-full") qui viennent normalement de Tailwind. On n'installe
-// pas tout Tailwind juste pour ça : on définit ces deux règles nous-mêmes.
-function OrbUtilityStyles() {
-  return (
-    <style>{`
-      .relative { position: relative; }
-      .h-full { height: 100%; }
-      .w-full { width: 100%; }
-    `}</style>
-  );
-}
-
-function OrbVisual({ status, isSpeaking }: { status: string; isSpeaking: boolean }) {
-  const agentState: AgentState =
-    status !== "connected" ? null : isSpeaking ? "talking" : "listening";
-
-  return (
-    <>
-      <OrbUtilityStyles />
-      <div style={{ width: 240, height: 240 }}>
-        <Orb agentState={agentState} colors={["#1B2A4A", "#6EC1E4"]} />
-      </div>
-    </>
-  );
-}
-
-function ConversationScreen({
-  agentId,
-  sessionId,
-  dynamicVariables,
-}: {
-  agentId: string;
-  sessionId: string;
-  dynamicVariables: Record<string, string>;
-}) {
-  const router = useRouter();
-  const { status, isSpeaking, startSession } = useConversation();
-  const [showFallback, setShowFallback] = useState(false);
-  const startedRef = useRef(false);
-
-  useEffect(() => {
-    const t = setTimeout(async () => {
-      try {
-        await startSession({
-          agentId,
-          dynamicVariables,
-          onConnect: () => {
-            startedRef.current = true;
-            setShowFallback(false);
-          },
-          onDisconnect: () => {
-            router.push(`/loading/${sessionId}`);
-          },
-          onError: () => {
-            setShowFallback(true);
-          },
-        });
-      } catch {
-        setShowFallback(true);
-      }
-    }, 400);
-
-    const fallbackTimeout = setTimeout(() => {
-      if (!startedRef.current) setShowFallback(true);
-    }, 6000);
-
-    return () => {
-      clearTimeout(t);
-      clearTimeout(fallbackTimeout);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function demarrerManuellement() {
-    try {
-      await startSession({
-        agentId,
-        dynamicVariables,
-        onConnect: () => setShowFallback(false),
-        onDisconnect: () => router.push(`/loading/${sessionId}`),
-      });
-    } catch {
-      // le bouton reste affiché pour réessayer
-    }
-  }
-
-  return (
-    <main
-      style={{
-        position: "fixed",
-        inset: 0,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 24,
-        background: "#F7F6F2",
-      }}
-    >
-      <OrbVisual status={status} isSpeaking={isSpeaking} />
-
-      {showFallback && (
-        <button
-          onClick={demarrerManuellement}
-          style={{
-            padding: "10px 20px",
-            border: "none",
-            background: "#2C2C2A",
-            color: "white",
-            borderRadius: 8,
-            cursor: "pointer",
-          }}
-        >
-          Démarrer l'appel
-        </button>
-      )}
-    </main>
-  );
-}
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import Script from "next/script";
 
 export default function ConversationPage({ params }: { params: { id: string } }) {
   const searchParams = useSearchParams();
   const agentId = process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID;
 
+  const [scriptStatus, setScriptStatus] = useState<"loading" | "loaded" | "error">("loading");
   const [linkedinSummary, setLinkedinSummary] = useState("");
   const [linkedinUrl, setLinkedinUrl] = useState("");
-  const [ready, setReady] = useState(false);
 
   const prenom = searchParams.get("prenom") ?? "";
   const nom = searchParams.get("nom") ?? "";
@@ -141,35 +19,81 @@ export default function ConversationPage({ params }: { params: { id: string } })
   useEffect(() => {
     setLinkedinSummary(sessionStorage.getItem(`linkedin_summary_${params.id}`) ?? "");
     setLinkedinUrl(sessionStorage.getItem(`linkedin_url_${params.id}`) ?? "");
-    setReady(true);
   }, [params.id]);
 
-  if (!agentId) {
-    return (
-      <main style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+  return (
+    <main
+      style={{
+        maxWidth: 480,
+        margin: "0 auto",
+        padding: "48px 24px",
+        textAlign: "center",
+      }}
+    >
+      <h1 style={{ fontSize: 22, fontWeight: 500 }}>
+        {prenom ? `À vous, ${prenom}` : "C'est parti"}
+      </h1>
+      <p style={{ color: "#5F5E5A", lineHeight: 1.6 }}>
+        Cliquez sur le bouton ci-dessous et autorisez le micro. Une fois la
+        conversation terminée, cliquez sur le lien en bas de page pour voir
+        votre CV.
+      </p>
+
+      {!agentId && (
         <p style={{ color: "#993C1D", fontSize: 14 }}>
           NEXT_PUBLIC_ELEVENLABS_AGENT_ID n'est pas configuré.
         </p>
-      </main>
-    );
-  }
+      )}
 
-  if (!ready) return null;
+      {agentId && (
+        <div style={{ marginTop: 32, minHeight: 80 }}>
+          <Script
+            src="https://unpkg.com/@elevenlabs/convai-widget-embed"
+            strategy="afterInteractive"
+            onLoad={() => setScriptStatus("loaded")}
+            onError={() => setScriptStatus("error")}
+          />
 
-  return (
-    <ConversationProvider agentId={agentId}>
-      <ConversationScreen
-        agentId={agentId}
-        sessionId={params.id}
-        dynamicVariables={{
-          session_id: params.id,
-          prenom,
-          nom,
-          telephone,
-          linkedin_url: linkedinUrl,
-          linkedin_summary: linkedinSummary,
-        }}
-      />
-    </ConversationProvider>
+          {scriptStatus === "loading" && (
+            <p style={{ color: "#888780", fontSize: 13 }}>
+              Chargement du module vocal...
+            </p>
+          )}
+
+          {scriptStatus === "error" && (
+            <p style={{ color: "#993C1D", fontSize: 14 }}>
+              Le script du widget n'a pas pu se charger. Rechargez la page.
+            </p>
+          )}
+
+          {/* @ts-ignore - custom element ElevenLabs, pas typé par React */}
+          <elevenlabs-convai
+            agent-id={agentId}
+            variant="compact"
+            dynamic-variables={JSON.stringify({
+              session_id: params.id,
+              prenom,
+              nom,
+              telephone,
+              linkedin_url: linkedinUrl,
+              linkedin_summary: linkedinSummary,
+            })}
+          />
+        </div>
+      )}
+
+      <div style={{ marginTop: 48 }}>
+        <a
+          href={`/result/${params.id}`}
+          style={{
+            color: "#5F5E5A",
+            fontSize: 14,
+            textDecoration: "underline",
+          }}
+        >
+          J'ai terminé — voir mon CV
+        </a>
+      </div>
+    </main>
   );
 }
