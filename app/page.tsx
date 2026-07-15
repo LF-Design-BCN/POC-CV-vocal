@@ -12,7 +12,6 @@ export default function HomePage() {
   const [prenom, setPrenom] = useState("");
   const [nom, setNom] = useState("");
   const [telephone, setTelephone] = useState("");
-  const [linkedinUrl, setLinkedinUrl] = useState("");
   const [linkedinFile, setLinkedinFile] = useState<File | null>(null);
   const [status, setStatus] = useState<"idle" | "parsing" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -27,8 +26,6 @@ export default function HomePage() {
     if (!sessionId || !canSubmit) return;
     setError(null);
 
-    let linkedinSummary = "";
-
     if (linkedinFile) {
       setStatus("parsing");
       try {
@@ -40,7 +37,15 @@ export default function HomePage() {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "Erreur inconnue");
-        linkedinSummary = data.linkedinSummary;
+
+        // Le résumé et le lien LinkedIn peuvent être longs : on les passe via
+        // sessionStorage plutôt que dans l'URL.
+        if (data.linkedinSummary) {
+          sessionStorage.setItem(`linkedin_summary_${sessionId}`, data.linkedinSummary);
+        }
+        if (data.linkedinUrl) {
+          sessionStorage.setItem(`linkedin_url_${sessionId}`, data.linkedinUrl);
+        }
       } catch (e: any) {
         setError(
           `Le PDF LinkedIn n'a pas pu être traité (${e.message}). Vous pouvez continuer sans, ou réessayer.`
@@ -50,18 +55,7 @@ export default function HomePage() {
       }
     }
 
-    // Le résumé peut être assez long : on le passe via sessionStorage plutôt
-    // que dans l'URL, pour éviter les limites de longueur d'URL.
-    if (linkedinSummary) {
-      sessionStorage.setItem(`linkedin_summary_${sessionId}`, linkedinSummary);
-    }
-
-    const params = new URLSearchParams({
-      prenom,
-      nom,
-      telephone,
-      linkedin: linkedinUrl,
-    });
+    const params = new URLSearchParams({ prenom, nom, telephone });
     router.push(`/conversation/${sessionId}?${params.toString()}`);
   }
 
@@ -103,13 +97,6 @@ export default function HomePage() {
           placeholder="Numéro de téléphone (pour le CV)"
           value={telephone}
           onChange={(e) => setTelephone(e.target.value)}
-          style={inputStyle}
-        />
-        <input
-          type="url"
-          placeholder="Lien LinkedIn (optionnel)"
-          value={linkedinUrl}
-          onChange={(e) => setLinkedinUrl(e.target.value)}
           style={inputStyle}
         />
 

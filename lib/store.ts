@@ -26,3 +26,12 @@ export async function loadLetter(id: string): Promise<string | null> {
   const data = await redis.get<string>(`letter:${id}`);
   return data ?? null;
 }
+
+export async function saveSelectedTemplate(id: string, templateId: string) {
+  await redis.set(`template:${id}`, templateId);
+}
+
+export async function loadSelectedTemplate(id: string): Promise<string | null> {
+  const data = await redis.get<string>(`template:${id}`);
+  return data ?? null;
+}

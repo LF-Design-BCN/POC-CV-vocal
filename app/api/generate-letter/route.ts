@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadProfile, saveLetter } from "@/lib/store";
+import { generateCoverLetter } from "@/lib/anthropic";
+
+// Endpoint de régénération manuelle, utilisé depuis la page résultat quand
+// la personne veut cibler une offre précise (la génération automatique via
+// le webhook utilise juste le secteur mentionné pendant l'appel).
 
 export async function POST(req: NextRequest) {
   const { profileId, offreCiblee } = await req.json();
@@ -9,47 +14,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Profil introuvable" }, { status: 404 });
   }
 
-  const prompt = `Tu es un expert en rédaction de lettres de motivation en français.
-
-Voici le profil du candidat, au format JSON :
-${JSON.stringify(profile, null, 2)}
-
-${offreCiblee ? `Poste / offre ciblée : ${offreCiblee}` : "Aucune offre précise n'a été fournie : reste générique sur le secteur visé."}
-
-Rédige une lettre de motivation professionnelle, en français, 300 à 400 mots,
-personnalisée à partir des expériences et compétences ci-dessus, sans formules
-toutes faites ni généralités vides. Structure-la en paragraphes clairs, sans
-objet ni coordonnées en en-tête (juste le corps de la lettre).`;
-
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": process.env.ANTHROPIC_API_KEY ?? "",
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-5",
-      max_tokens: 1500,
-      messages: [{ role: "user", content: prompt }],
-    }),
-  });
-
-  if (!res.ok) {
-    const errText = await res.text();
+  try {
+    const lettre = await generateCoverLetter(profile, offreCiblee);
+    await saveLetter(profileId, lettre);
+    return NextResponse.json({ lettre });
+  } catch (err: any) {
     return NextResponse.json(
-      { error: "Erreur API Claude", details: errText },
+      { error: "Erreur API Claude", details: err.message },
       { status: 502 }
     );
   }
-
-  const data = await res.json();
-  const lettre = (data.content ?? [])
-    .map((block: any) => block.text ?? "")
-    .join("\n")
-    .trim();
-
-  await saveLetter(profileId, lettre);
-
-  return NextResponse.json({ lettre });
 }

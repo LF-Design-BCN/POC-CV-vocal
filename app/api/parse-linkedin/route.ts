@@ -30,7 +30,20 @@ export async function POST(req: NextRequest) {
     }
 
     const linkedinSummary = await extractLinkedInSummary(parsed.text);
-    return NextResponse.json({ linkedinSummary });
+
+    // Le lien du profil apparaît parfois dans l'export PDF lui-même ; on le
+    // récupère par une simple regex plutôt que de demander à l'utilisateur
+    // de le ressaisir à la main.
+    const urlMatch = parsed.text.match(
+      /(https?:\/\/)?(www\.)?linkedin\.com\/in\/[A-Za-z0-9\-_%]+/i
+    );
+    const linkedinUrl = urlMatch
+      ? urlMatch[0].startsWith("http")
+        ? urlMatch[0]
+        : `https://${urlMatch[0]}`
+      : "";
+
+    return NextResponse.json({ linkedinSummary, linkedinUrl });
   } catch (err: any) {
     return NextResponse.json(
       { error: "Erreur lors du traitement du PDF", details: err.message },

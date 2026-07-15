@@ -1,8 +1,54 @@
 import type { CVData } from "./schema";
+import { TEMPLATES } from "./templates";
 
 // Logique de génération de la lettre de motivation, partagée entre :
 // - la génération automatique déclenchée par le webhook ElevenLabs
 // - la régénération manuelle depuis la page résultat (avec une offre ciblée)
+
+export async function chooseTemplate(profile: CVData): Promise<string> {
+  const options = TEMPLATES.map(
+    (t) => `- ${t.id} : ${t.description} (tags: ${t.tags.join(", ")})`
+  ).join("\n");
+
+  const prompt = `Voici un profil candidat au format JSON :
+${JSON.stringify(profile, null, 2)}
+
+Voici les modèles de CV disponibles :
+${options}
+
+Choisis le modèle le plus adapté au secteur et au profil de cette personne.
+Réponds uniquement avec l'identifiant du modèle choisi (par exemple
+"classique-marine"), sans aucun autre texte ni explication.`;
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": process.env.ANTHROPIC_API_KEY ?? "",
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-5",
+      max_tokens: 30,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+
+  if (!res.ok) {
+    // Repli silencieux sur un template par défaut plutôt que de faire
+    // échouer tout le pipeline pour un choix de mise en page.
+    return TEMPLATES[0].id;
+  }
+
+  const data = await res.json();
+  const text = (data.content ?? [])
+    .map((b: any) => b.text ?? "")
+    .join("")
+    .trim();
+
+  const found = TEMPLATES.find((t) => text.includes(t.id));
+  return found ? found.id : TEMPLATES[0].id;
+}
 
 export async function generateCoverLetter(
   profile: CVData,
@@ -15,10 +61,13 @@ ${JSON.stringify(profile, null, 2)}
 
 ${offreCiblee ? `Poste / offre ciblée : ${offreCiblee}` : "Aucune offre précise n'a été fournie : reste générique sur le secteur visé."}
 
-Rédige une lettre de motivation professionnelle, en français, 300 à 400 mots,
-personnalisée à partir des expériences et compétences ci-dessus, sans formules
-toutes faites ni généralités vides. Structure-la en paragraphes clairs, sans
-objet ni coordonnées en en-tête (juste le corps de la lettre).`;
+Rédige uniquement le corps de la lettre de motivation, en français, 250 à
+350 mots, personnalisé à partir des expériences et compétences ci-dessus,
+sans formules toutes faites ni généralités vides. Structure-le en 3
+paragraphes (motivation, qualifications concrètes, disponibilité/clôture).
+Ne mets ni "Madame, Monsieur", ni formule de politesse finale ("Cordialement"
+etc.), ni objet, ni coordonnées : uniquement le corps du texte, ces éléments
+sont ajoutés séparément par notre mise en page.`;
 
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",

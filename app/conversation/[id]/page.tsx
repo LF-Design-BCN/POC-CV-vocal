@@ -1,83 +1,99 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Script from "next/script";
 
 export default function ConversationPage({ params }: { params: { id: string } }) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const agentId = process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID;
+  const widgetRef = useRef<any>(null);
 
-  const [scriptStatus, setScriptStatus] = useState<"loading" | "loaded" | "error">("loading");
+  const [scriptLoaded, setScriptLoaded] = useState(false);
+  const [scriptError, setScriptError] = useState(false);
+  const [ready, setReady] = useState(false);
   const [linkedinSummary, setLinkedinSummary] = useState("");
+  const [linkedinUrl, setLinkedinUrl] = useState("");
 
   const prenom = searchParams.get("prenom") ?? "";
   const nom = searchParams.get("nom") ?? "";
   const telephone = searchParams.get("telephone") ?? "";
-  const linkedinUrl = searchParams.get("linkedin") ?? "";
 
+  // Récupération synchrone (avant démarrage de l'appel) des infos LinkedIn
+  // stockées par la page d'accueil, pour éviter toute course avec le
+  // démarrage automatique de la conversation ci-dessous.
   useEffect(() => {
-    // Récupéré depuis sessionStorage plutôt que l'URL : le résumé LinkedIn
-    // peut être trop long pour un query param.
-    const stored = sessionStorage.getItem(`linkedin_summary_${params.id}`);
-    if (stored) setLinkedinSummary(stored);
+    setLinkedinSummary(sessionStorage.getItem(`linkedin_summary_${params.id}`) ?? "");
+    setLinkedinUrl(sessionStorage.getItem(`linkedin_url_${params.id}`) ?? "");
+    setReady(true);
   }, [params.id]);
+
+  // Démarre automatiquement la conversation dès que le widget est prêt, et
+  // redirige vers la page de chargement dès que l'appel se termine.
+  useEffect(() => {
+    if (!ready || !scriptLoaded || !widgetRef.current) return;
+    const widget = widgetRef.current;
+
+    const onEnded = () => {
+      router.push(`/loading/${params.id}`);
+    };
+
+    widget.addEventListener?.("conversationEnded", onEnded);
+
+    const t = setTimeout(() => {
+      try {
+        widget.startConversation?.();
+      } catch {
+        // Si l'auto-démarrage échoue (ex: permission micro refusée par le
+        // navigateur), le widget reste affiché et cliquable manuellement.
+      }
+    }, 400);
+
+    return () => {
+      widget.removeEventListener?.("conversationEnded", onEnded);
+      clearTimeout(t);
+    };
+  }, [ready, scriptLoaded, params.id, router]);
 
   return (
     <main
       style={{
-        maxWidth: 480,
-        margin: "0 auto",
-        padding: "48px 24px",
-        textAlign: "center",
+        position: "fixed",
+        inset: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "#F7F6F2",
       }}
     >
-      <h1 style={{ fontSize: 22, fontWeight: 500 }}>
-        {prenom ? `À vous, ${prenom}` : "C'est parti"}
-      </h1>
-      <p style={{ color: "#5F5E5A", lineHeight: 1.6 }}>
-        Cliquez sur "Démarrer l'appel" et autorisez le micro. Une fois la
-        conversation terminée, cliquez sur le lien en bas de page pour voir
-        votre CV.
-      </p>
-
       {!agentId && (
         <p style={{ color: "#993C1D", fontSize: 14 }}>
-          NEXT_PUBLIC_ELEVENLABS_AGENT_ID n'est pas configuré (voir .env.example).
+          NEXT_PUBLIC_ELEVENLABS_AGENT_ID n'est pas configuré.
         </p>
       )}
 
       {agentId && (
-        <div style={{ marginTop: 32, minHeight: 80 }}>
+        <>
           <Script
             src="https://unpkg.com/@elevenlabs/convai-widget-embed"
             strategy="afterInteractive"
-            onLoad={() => setScriptStatus("loaded")}
-            onError={() => setScriptStatus("error")}
+            onLoad={() => setScriptLoaded(true)}
+            onError={() => setScriptError(true)}
           />
 
-          {scriptStatus === "loading" && (
-            <p style={{ color: "#888780", fontSize: 13 }}>
-              Chargement du module vocal...
-            </p>
-          )}
-
-          {scriptStatus === "error" && (
+          {scriptError && (
             <p style={{ color: "#993C1D", fontSize: 14 }}>
-              Le script du widget ElevenLabs n'a pas pu se charger
-              (unpkg.com bloqué par un bloqueur de pub, un pare-feu, ou
-              indisponible). Essaie dans une fenêtre privée sans extensions.
+              Le module vocal n'a pas pu se charger. Rechargez la page.
             </p>
           )}
 
-          {/* variant="compact" = juste la boule + bouton, pas de panneau de transcript */}
           {/* @ts-ignore - custom element ElevenLabs, pas typé par React */}
           <elevenlabs-convai
+            ref={widgetRef}
             agent-id={agentId}
             variant="compact"
-            start-call-text="Démarrer l'appel"
-            end-call-text="Terminer l'appel"
-            action-text="Parler à l'assistante"
+            disable-banner="true"
             dynamic-variables={JSON.stringify({
               session_id: params.id,
               prenom,
@@ -87,21 +103,8 @@ export default function ConversationPage({ params }: { params: { id: string } })
               linkedin_summary: linkedinSummary,
             })}
           />
-        </div>
+        </>
       )}
-
-      <div style={{ marginTop: 48 }}>
-        <a
-          href={`/result/${params.id}`}
-          style={{
-            color: "#5F5E5A",
-            fontSize: 14,
-            textDecoration: "underline",
-          }}
-        >
-          J'ai terminé — voir mon CV
-        </a>
-      </div>
     </main>
   );
 }

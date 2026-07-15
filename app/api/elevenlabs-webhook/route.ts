@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { CVDataSchema, type CVData } from "@/lib/schema";
-import { saveProfile, saveLetter } from "@/lib/store";
-import { generateCoverLetter } from "@/lib/anthropic";
+import { saveProfile, saveLetter, saveSelectedTemplate } from "@/lib/store";
+import { generateCoverLetter, chooseTemplate } from "@/lib/anthropic";
 
 // IMPORTANT : la forme exacte du payload webhook ElevenLabs (noms des champs
 // dans "analysis.data_collection_results", nom du champ contenant tes
@@ -114,6 +114,16 @@ export async function POST(req: NextRequest) {
   }
 
   await saveProfile(sessionId, data);
+
+  // Choix automatique du template de CV le plus adapté au profil/secteur.
+  try {
+    const templateId = await chooseTemplate(data);
+    await saveSelectedTemplate(sessionId, templateId);
+  } catch (err) {
+    console.error("Choix automatique du template échoué:", err);
+    // Pas de fallback à écrire ici : l'absence de valeur fera retomber sur
+    // le template par défaut côté page résultat.
+  }
 
   // Génération automatique de la lettre de motivation, sans action manuelle.
   // On cible par défaut le secteur mentionné pendant l'appel (pas d'offre
