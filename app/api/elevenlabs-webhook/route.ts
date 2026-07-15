@@ -51,16 +51,20 @@ function mapWebhookPayloadToCVData(payload: any): {
   sessionId: string | null;
   data: CVData;
 } {
-  // À ajuster selon la structure réelle observée dans tes logs.
+  // Structure réelle confirmée par la doc officielle ElevenLabs : tout est
+  // imbriqué sous payload.data (analysis, conversation_initiation_client_data,
+  // conversation_id...), pas à la racine du payload.
+  const callData = payload?.data ?? payload;
+
   const collected =
-    payload?.analysis?.data_collection_results ??
-    payload?.data_collection_results ??
+    callData?.analysis?.data_collection_results ??
+    callData?.data_collection_results ??
     {};
 
   const dynamicVars =
-    payload?.conversation_initiation_client_data?.dynamic_variables ?? {};
+    callData?.conversation_initiation_client_data?.dynamic_variables ?? {};
 
-  const sessionId = dynamicVars.session_id ?? payload?.conversation_id ?? null;
+  const sessionId = dynamicVars.session_id ?? callData?.conversation_id ?? null;
 
   // Prénom/nom/téléphone/lien LinkedIn viennent du formulaire (dynamic
   // variables), donc plus fiables que ce que l'agent pourrait ré-extraire
@@ -100,6 +104,14 @@ export async function POST(req: NextRequest) {
   }
 
   const payload = JSON.parse(rawBody);
+
+  // ElevenLabs peut aussi envoyer d'autres types de webhook sur cette même
+  // URL (échec d'initiation d'appel, webhook audio) : on ne traite que les
+  // webhooks de transcription/analyse, qui sont les seuls à contenir les
+  // données du profil.
+  if (payload?.type && payload.type !== "post_call_transcription") {
+    return NextResponse.json({ ok: true, skipped: payload.type });
+  }
 
   // Décommente pendant la mise au point pour voir la vraie forme du payload :
   // console.log(JSON.stringify(payload, null, 2));
