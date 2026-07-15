@@ -61,10 +61,25 @@ function verifySignature(rawBody: string, signatureHeader: string | null) {
 // Voir le tableau de config dans le README pour la liste exacte des champs
 // à créer côté dashboard ElevenLabs.
 
+// Les champs de Data Collection d'ElevenLabs ne sont pas renvoyés comme de
+// simples chaînes : chaque champ arrive sous forme d'objet (typiquement
+// { value: "...", ... }). On extrait la valeur utile quel que soit le cas.
+function extractString(raw: unknown): string {
+  if (typeof raw === "string") return raw;
+  if (raw && typeof raw === "object") {
+    const obj = raw as Record<string, unknown>;
+    if (typeof obj.value === "string") return obj.value;
+    if (obj.value != null) return String(obj.value);
+  }
+  if (raw != null && typeof raw !== "object") return String(raw);
+  return "";
+}
+
 function safeParseArray<T>(raw: unknown, fallback: T[] = []): T[] {
-  if (typeof raw !== "string" || raw.trim() === "") return fallback;
+  const str = extractString(raw);
+  if (!str) return fallback;
   try {
-    const parsed = JSON.parse(raw);
+    const parsed = JSON.parse(str);
     return Array.isArray(parsed) ? parsed : fallback;
   } catch {
     // Le modèle d'extraction n'a pas renvoyé du JSON valide : on ne bloque
@@ -104,12 +119,12 @@ function mapWebhookPayloadToCVData(payload: any): {
 
   const raw = {
     contact: {
-      nom: nomComplet || collected.contact_nom || "",
-      telephone: dynamicVars.telephone || collected.contact_telephone || "",
-      email: collected.contact_email ?? "",
+      nom: nomComplet || extractString(collected.contact_nom),
+      telephone: dynamicVars.telephone || extractString(collected.contact_telephone),
+      email: extractString(collected.contact_email),
       linkedin: dynamicVars.linkedin_url || "",
     },
-    secteur_recherche: collected.secteur_recherche ?? "",
+    secteur_recherche: extractString(collected.secteur_recherche),
     experiences: safeParseArray(collected.experiences_json),
     formations: safeParseArray(collected.formations_json),
     competences: {
