@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Script from "next/script";
 
@@ -9,11 +9,19 @@ export default function ConversationPage({ params }: { params: { id: string } })
   const agentId = process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID;
 
   const [scriptStatus, setScriptStatus] = useState<"loading" | "loaded" | "error">("loading");
+  const [linkedinSummary, setLinkedinSummary] = useState("");
 
   const prenom = searchParams.get("prenom") ?? "";
   const nom = searchParams.get("nom") ?? "";
   const telephone = searchParams.get("telephone") ?? "";
   const linkedinUrl = searchParams.get("linkedin") ?? "";
+
+  useEffect(() => {
+    // Récupéré depuis sessionStorage plutôt que l'URL : le résumé LinkedIn
+    // peut être trop long pour un query param.
+    const stored = sessionStorage.getItem(`linkedin_summary_${params.id}`);
+    if (stored) setLinkedinSummary(stored);
+  }, [params.id]);
 
   return (
     <main
@@ -76,6 +84,7 @@ export default function ConversationPage({ params }: { params: { id: string } })
               nom,
               telephone,
               linkedin_url: linkedinUrl,
+              linkedin_summary: linkedinSummary,
             })}
           />
         </div>
