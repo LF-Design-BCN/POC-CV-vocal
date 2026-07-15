@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
+import LinkedInHelpModal from "@/components/LinkedInHelpModal";
 
 export default function HomePage() {
   const router = useRouter();
@@ -122,9 +123,9 @@ export default function HomePage() {
             onChange={(e) => setLinkedinFile(e.target.files?.[0] ?? null)}
             style={{ ...inputStyle, marginTop: 4, padding: 8 }}
           />
-          <p style={{ fontSize: 12, color: "#888780", marginTop: 4 }}>
-            Sur votre profil LinkedIn : Ressources → Enregistrer au format PDF.
-          </p>
+          <div style={{ fontSize: 12, color: "#888780", marginTop: 4 }}>
+            Ne savez pas comment faire ? <LinkedInHelpModal />
+          </div>
         </div>
 
         <button
