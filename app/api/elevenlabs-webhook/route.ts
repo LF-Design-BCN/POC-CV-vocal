@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { CVDataSchema, type CVData } from "@/lib/schema";
-import { saveProfile } from "@/lib/store";
+import { saveProfile, saveLetter } from "@/lib/store";
+import { generateCoverLetter } from "@/lib/anthropic";
 
 // IMPORTANT : la forme exacte du payload webhook ElevenLabs (noms des champs
 // dans "analysis.data_collection_results", nom du champ contenant tes
@@ -56,15 +57,26 @@ function mapWebhookPayloadToCVData(payload: any): {
     payload?.data_collection_results ??
     {};
 
-  const sessionId =
-    payload?.conversation_initiation_client_data?.dynamic_variables
-      ?.session_id ?? payload?.conversation_id ?? null;
+  const dynamicVars =
+    payload?.conversation_initiation_client_data?.dynamic_variables ?? {};
+
+  const sessionId = dynamicVars.session_id ?? payload?.conversation_id ?? null;
+
+  // Prénom/nom/téléphone/lien LinkedIn viennent du formulaire (dynamic
+  // variables), donc plus fiables que ce que l'agent pourrait ré-extraire
+  // du transcript. contact_email reste extrait via la Data Collection, car
+  // le formulaire ne le demande pas.
+  const nomComplet = [dynamicVars.prenom, dynamicVars.nom]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
 
   const raw = {
     contact: {
-      nom: collected.contact_nom ?? "",
-      telephone: collected.contact_telephone ?? "",
+      nom: nomComplet || collected.contact_nom || "",
+      telephone: dynamicVars.telephone || collected.contact_telephone || "",
       email: collected.contact_email ?? "",
+      linkedin: dynamicVars.linkedin_url || "",
     },
     secteur_recherche: collected.secteur_recherche ?? "",
     experiences: safeParseArray(collected.experiences_json),
@@ -102,6 +114,20 @@ export async function POST(req: NextRequest) {
   }
 
   await saveProfile(sessionId, data);
+
+  // Génération automatique de la lettre de motivation, sans action manuelle.
+  // On cible par défaut le secteur mentionné pendant l'appel (pas d'offre
+  // précise disponible à ce stade) ; l'utilisateur pourra toujours en
+  // régénérer une plus ciblée depuis la page résultat.
+  try {
+    const lettre = await generateCoverLetter(data, data.secteur_recherche);
+    await saveLetter(sessionId, lettre);
+  } catch (err) {
+    // On ne fait pas échouer le webhook pour ça : le CV reste consultable
+    // même si la lettre automatique a échoué, et l'utilisateur pourra la
+    // régénérer manuellement depuis la page résultat.
+    console.error("Génération automatique de la lettre échouée:", err);
+  }
 
   return NextResponse.json({ ok: true, profileId: sessionId });
 }
