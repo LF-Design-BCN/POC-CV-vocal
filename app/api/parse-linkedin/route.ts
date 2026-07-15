@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import pdfParse from "pdf-parse/lib/pdf-parse.js";
+import pdfParse from "pdf-parse";
 import { extractLinkedInSummary } from "@/lib/anthropic";
 
 export async function POST(req: NextRequest) {
