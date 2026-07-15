@@ -2,99 +2,93 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Script from "next/script";
+import { ConversationProvider, useConversation } from "@elevenlabs/react";
+import { Orb, type AgentState } from "@/components/ui/orb";
 
-export default function ConversationPage({ params }: { params: { id: string } }) {
+// Le composant Orb officiel utilise deux classes utilitaires ("relative",
+// "h-full", "w-full") qui viennent normalement de Tailwind. On n'installe
+// pas tout Tailwind juste pour ça : on définit ces deux règles nous-mêmes.
+function OrbUtilityStyles() {
+  return (
+    <style>{`
+      .relative { position: relative; }
+      .h-full { height: 100%; }
+      .w-full { width: 100%; }
+    `}</style>
+  );
+}
+
+function OrbVisual({ status, isSpeaking }: { status: string; isSpeaking: boolean }) {
+  const agentState: AgentState =
+    status !== "connected" ? null : isSpeaking ? "talking" : "listening";
+
+  return (
+    <>
+      <OrbUtilityStyles />
+      <div style={{ width: 240, height: 240 }}>
+        <Orb agentState={agentState} colors={["#1B2A4A", "#6EC1E4"]} />
+      </div>
+    </>
+  );
+}
+
+function ConversationScreen({
+  agentId,
+  sessionId,
+  dynamicVariables,
+}: {
+  agentId: string;
+  sessionId: string;
+  dynamicVariables: Record<string, string>;
+}) {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const agentId = process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID;
-  const widgetRef = useRef<any>(null);
+  const { status, isSpeaking, startSession } = useConversation();
+  const [showFallback, setShowFallback] = useState(false);
   const startedRef = useRef(false);
 
-  const [scriptLoaded, setScriptLoaded] = useState(false);
-  const [scriptError, setScriptError] = useState(false);
-  const [ready, setReady] = useState(false);
-  const [showFallback, setShowFallback] = useState(false);
-  const [linkedinSummary, setLinkedinSummary] = useState("");
-  const [linkedinUrl, setLinkedinUrl] = useState("");
-
-  const prenom = searchParams.get("prenom") ?? "";
-  const nom = searchParams.get("nom") ?? "";
-  const telephone = searchParams.get("telephone") ?? "";
-
   useEffect(() => {
-    setLinkedinSummary(sessionStorage.getItem(`linkedin_summary_${params.id}`) ?? "");
-    setLinkedinUrl(sessionStorage.getItem(`linkedin_url_${params.id}`) ?? "");
-    setReady(true);
-  }, [params.id]);
-
-  // Centrage du widget : on garde `position: fixed` (probablement requis par
-  // son fonctionnement interne — le display:none et le passage en `relative`
-  // ont tous les deux cassé son fonctionnement dans les tentatives
-  // précédentes), et on centre avec inset+margin:auto plutôt qu'un
-  // transform, pour ne pas entrer en conflit avec ses propres animations.
-  useEffect(() => {
-    if (!scriptLoaded) return;
-    const style = document.createElement("style");
-    style.setAttribute("data-cv-vocal-override", "true");
-    style.textContent = `
-      #cv-vocal-widget {
-        position: fixed !important;
-        inset: 0 !important;
-        margin: auto !important;
-        width: 360px !important;
-        height: 360px !important;
-        --elevenlabs-convai-widget-width: 360px;
-        --elevenlabs-convai-widget-height: 360px;
-      }
-    `;
-    const t = setTimeout(() => document.head.appendChild(style), 200);
-    return () => {
-      clearTimeout(t);
-      style.remove();
-    };
-  }, [scriptLoaded]);
-
-  useEffect(() => {
-    if (!ready || !scriptLoaded || !widgetRef.current) return;
-    const widget = widgetRef.current;
-
-    const onStarted = () => {
-      startedRef.current = true;
-      setShowFallback(false);
-    };
-    const onEnded = () => {
-      router.push(`/loading/${params.id}`);
-    };
-
-    widget.addEventListener?.("conversationStarted", onStarted);
-    widget.addEventListener?.("conversationEnded", onEnded);
-
-    const startTimeout = setTimeout(() => {
+    const t = setTimeout(async () => {
       try {
-        widget.startConversation?.();
+        await startSession({
+          agentId,
+          dynamicVariables,
+          onConnect: () => {
+            startedRef.current = true;
+            setShowFallback(false);
+          },
+          onDisconnect: () => {
+            router.push(`/loading/${sessionId}`);
+          },
+          onError: () => {
+            setShowFallback(true);
+          },
+        });
       } catch {
-        // Géré par le bouton de secours ci-dessous si ça ne démarre pas.
+        setShowFallback(true);
       }
     }, 400);
 
     const fallbackTimeout = setTimeout(() => {
       if (!startedRef.current) setShowFallback(true);
-    }, 4000);
+    }, 6000);
 
     return () => {
-      widget.removeEventListener?.("conversationStarted", onStarted);
-      widget.removeEventListener?.("conversationEnded", onEnded);
-      clearTimeout(startTimeout);
+      clearTimeout(t);
       clearTimeout(fallbackTimeout);
     };
-  }, [ready, scriptLoaded, params.id, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  function demarrerManuellement() {
+  async function demarrerManuellement() {
     try {
-      widgetRef.current?.startConversation?.();
+      await startSession({
+        agentId,
+        dynamicVariables,
+        onConnect: () => setShowFallback(false),
+        onDisconnect: () => router.push(`/loading/${sessionId}`),
+      });
     } catch {
-      // rien de plus à faire ici, le bouton reste affiché pour réessayer
+      // le bouton reste affiché pour réessayer
     }
   }
 
@@ -111,62 +105,71 @@ export default function ConversationPage({ params }: { params: { id: string } })
         background: "#F7F6F2",
       }}
     >
-      {!agentId && (
+      <OrbVisual status={status} isSpeaking={isSpeaking} />
+
+      {showFallback && (
+        <button
+          onClick={demarrerManuellement}
+          style={{
+            padding: "10px 20px",
+            border: "none",
+            background: "#2C2C2A",
+            color: "white",
+            borderRadius: 8,
+            cursor: "pointer",
+          }}
+        >
+          Démarrer l'appel
+        </button>
+      )}
+    </main>
+  );
+}
+
+export default function ConversationPage({ params }: { params: { id: string } }) {
+  const searchParams = useSearchParams();
+  const agentId = process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID;
+
+  const [linkedinSummary, setLinkedinSummary] = useState("");
+  const [linkedinUrl, setLinkedinUrl] = useState("");
+  const [ready, setReady] = useState(false);
+
+  const prenom = searchParams.get("prenom") ?? "";
+  const nom = searchParams.get("nom") ?? "";
+  const telephone = searchParams.get("telephone") ?? "";
+
+  useEffect(() => {
+    setLinkedinSummary(sessionStorage.getItem(`linkedin_summary_${params.id}`) ?? "");
+    setLinkedinUrl(sessionStorage.getItem(`linkedin_url_${params.id}`) ?? "");
+    setReady(true);
+  }, [params.id]);
+
+  if (!agentId) {
+    return (
+      <main style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
         <p style={{ color: "#993C1D", fontSize: 14 }}>
           NEXT_PUBLIC_ELEVENLABS_AGENT_ID n'est pas configuré.
         </p>
-      )}
+      </main>
+    );
+  }
 
-      {agentId && (
-        <>
-          <Script
-            src="https://unpkg.com/@elevenlabs/convai-widget-embed"
-            strategy="afterInteractive"
-            onLoad={() => setScriptLoaded(true)}
-            onError={() => setScriptError(true)}
-          />
+  if (!ready) return null;
 
-          {scriptError && (
-            <p style={{ color: "#993C1D", fontSize: 14 }}>
-              Le module vocal n'a pas pu se charger. Rechargez la page.
-            </p>
-          )}
-
-          {showFallback && (
-            <button
-              onClick={demarrerManuellement}
-              style={{
-                padding: "10px 20px",
-                border: "none",
-                background: "#2C2C2A",
-                color: "white",
-                borderRadius: 8,
-                cursor: "pointer",
-                position: "relative",
-                zIndex: 10,
-              }}
-            >
-              Démarrer l'appel
-            </button>
-          )}
-
-          {/* @ts-ignore - custom element ElevenLabs, pas typé par React */}
-          <elevenlabs-convai
-            id="cv-vocal-widget"
-            ref={widgetRef}
-            agent-id={agentId}
-            variant="compact"
-            dynamic-variables={JSON.stringify({
-              session_id: params.id,
-              prenom,
-              nom,
-              telephone,
-              linkedin_url: linkedinUrl,
-              linkedin_summary: linkedinSummary,
-            })}
-          />
-        </>
-      )}
-    </main>
+  return (
+    <ConversationProvider agentId={agentId}>
+      <ConversationScreen
+        agentId={agentId}
+        sessionId={params.id}
+        dynamicVariables={{
+          session_id: params.id,
+          prenom,
+          nom,
+          telephone,
+          linkedin_url: linkedinUrl,
+          linkedin_summary: linkedinSummary,
+        }}
+      />
+    </ConversationProvider>
   );
 }
