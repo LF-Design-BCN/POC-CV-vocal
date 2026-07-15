@@ -84,7 +84,7 @@ export default function ConversationPage({ params }: { params: { id: string } })
 
       <div style={{ marginTop: 48 }}>
         <a
-          href={`/result/${params.id}`}
+          href={`/loading/${params.id}`}
           style={{
             color: "#5F5E5A",
             fontSize: 14,
