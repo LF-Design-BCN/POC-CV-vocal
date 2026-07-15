@@ -75,6 +75,17 @@ export default function ConversationPage({ params }: { params: { id: string } })
 
       {agentId && (
         <>
+          <style>{`
+            elevenlabs-convai {
+              position: fixed !important;
+              top: 50% !important;
+              left: 50% !important;
+              right: auto !important;
+              bottom: auto !important;
+              transform: translate(-50%, -50%) !important;
+            }
+          `}</style>
+
           <Script
             src="https://unpkg.com/@elevenlabs/convai-widget-embed"
             strategy="afterInteractive"
