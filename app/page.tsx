@@ -12,15 +12,49 @@ export default function HomePage() {
   const [nom, setNom] = useState("");
   const [telephone, setTelephone] = useState("");
   const [linkedinUrl, setLinkedinUrl] = useState("");
+  const [linkedinFile, setLinkedinFile] = useState<File | null>(null);
+  const [status, setStatus] = useState<"idle" | "parsing" | "error">("idle");
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setSessionId(uuidv4());
   }, []);
 
-  const canSubmit = prenom.trim().length > 0;
+  const canSubmit = prenom.trim().length > 0 && status !== "parsing";
 
-  function commencer() {
+  async function commencer() {
     if (!sessionId || !canSubmit) return;
+    setError(null);
+
+    let linkedinSummary = "";
+
+    if (linkedinFile) {
+      setStatus("parsing");
+      try {
+        const formData = new FormData();
+        formData.append("file", linkedinFile);
+        const res = await fetch("/api/parse-linkedin", {
+          method: "POST",
+          body: formData,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Erreur inconnue");
+        linkedinSummary = data.linkedinSummary;
+      } catch (e: any) {
+        setError(
+          `Le PDF LinkedIn n'a pas pu être traité (${e.message}). Vous pouvez continuer sans, ou réessayer.`
+        );
+        setStatus("error");
+        return;
+      }
+    }
+
+    // Le résumé peut être assez long : on le passe via sessionStorage plutôt
+    // que dans l'URL, pour éviter les limites de longueur d'URL.
+    if (linkedinSummary) {
+      sessionStorage.setItem(`linkedin_summary_${sessionId}`, linkedinSummary);
+    }
+
     const params = new URLSearchParams({
       prenom,
       nom,
@@ -78,6 +112,21 @@ export default function HomePage() {
           style={inputStyle}
         />
 
+        <div style={{ width: "100%", maxWidth: 360, textAlign: "left" }}>
+          <label style={{ fontSize: 13, color: "#5F5E5A" }}>
+            Export PDF de votre profil LinkedIn (optionnel, mais recommandé)
+          </label>
+          <input
+            type="file"
+            accept="application/pdf"
+            onChange={(e) => setLinkedinFile(e.target.files?.[0] ?? null)}
+            style={{ ...inputStyle, marginTop: 4, padding: 8 }}
+          />
+          <p style={{ fontSize: 12, color: "#888780", marginTop: 4 }}>
+            Sur votre profil LinkedIn : Ressources → Enregistrer au format PDF.
+          </p>
+        </div>
+
         <button
           onClick={commencer}
           disabled={!canSubmit}
@@ -91,8 +140,10 @@ export default function HomePage() {
             cursor: canSubmit ? "pointer" : "not-allowed",
           }}
         >
-          Continuer
+          {status === "parsing" ? "Analyse du PDF en cours..." : "Continuer"}
         </button>
+
+        {error && <p style={{ color: "#993C1D", fontSize: 14 }}>{error}</p>}
       </div>
     </main>
   );
