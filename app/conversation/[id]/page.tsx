@@ -1,11 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Script from "next/script";
 
 export default function ConversationPage({ params }: { params: { id: string } }) {
   const searchParams = useSearchParams();
   const agentId = process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID;
+
+  const [scriptStatus, setScriptStatus] = useState<"loading" | "loaded" | "error">("loading");
 
   const prenom = searchParams.get("prenom") ?? "";
   const nom = searchParams.get("nom") ?? "";
@@ -37,11 +40,28 @@ export default function ConversationPage({ params }: { params: { id: string } })
       )}
 
       {agentId && (
-        <div style={{ marginTop: 32 }}>
+        <div style={{ marginTop: 32, minHeight: 80 }}>
           <Script
             src="https://unpkg.com/@elevenlabs/convai-widget-embed"
             strategy="afterInteractive"
+            onLoad={() => setScriptStatus("loaded")}
+            onError={() => setScriptStatus("error")}
           />
+
+          {scriptStatus === "loading" && (
+            <p style={{ color: "#888780", fontSize: 13 }}>
+              Chargement du module vocal...
+            </p>
+          )}
+
+          {scriptStatus === "error" && (
+            <p style={{ color: "#993C1D", fontSize: 14 }}>
+              Le script du widget ElevenLabs n'a pas pu se charger
+              (unpkg.com bloqué par un bloqueur de pub, un pare-feu, ou
+              indisponible). Essaie dans une fenêtre privée sans extensions.
+            </p>
+          )}
+
           {/* variant="compact" = juste la boule + bouton, pas de panneau de transcript */}
           {/* @ts-ignore - custom element ElevenLabs, pas typé par React */}
           <elevenlabs-convai
