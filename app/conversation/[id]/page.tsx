@@ -77,12 +77,12 @@ export default function ConversationPage({ params }: { params: { id: string } })
         <>
           <style>{`
             elevenlabs-convai {
-              position: fixed !important;
-              top: 50% !important;
-              left: 50% !important;
+              position: relative !important;
+              top: auto !important;
+              left: auto !important;
               right: auto !important;
               bottom: auto !important;
-              transform: translate(-50%, -50%) !important;
+              transform: none !important;
             }
           `}</style>
 
