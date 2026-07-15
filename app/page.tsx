@@ -1,28 +1,39 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { CSSProperties } from "react";
+import { useRouter } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
-import Script from "next/script";
 
 export default function HomePage() {
+  const router = useRouter();
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [prenom, setPrenom] = useState("");
   const [nom, setNom] = useState("");
-  const [started, setStarted] = useState(false);
+  const [telephone, setTelephone] = useState("");
+  const [linkedinUrl, setLinkedinUrl] = useState("");
 
   useEffect(() => {
-    // Identifiant unique pour relier cette session vocale à un profil.
-    // Passé à l'agent en dynamic variable pour qu'on le retrouve dans le webhook.
     setSessionId(uuidv4());
   }, []);
 
-  const agentId = process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID;
-  const canStart = prenom.trim().length > 0;
+  const canSubmit = prenom.trim().length > 0;
+
+  function commencer() {
+    if (!sessionId || !canSubmit) return;
+    const params = new URLSearchParams({
+      prenom,
+      nom,
+      telephone,
+      linkedin: linkedinUrl,
+    });
+    router.push(`/conversation/${sessionId}?${params.toString()}`);
+  }
 
   return (
     <main
       style={{
-        maxWidth: 640,
+        maxWidth: 560,
         margin: "0 auto",
         padding: "48px 24px",
         textAlign: "center",
@@ -32,83 +43,65 @@ export default function HomePage() {
         Créez votre CV en parlant
       </h1>
       <p style={{ color: "#5F5E5A", lineHeight: 1.6 }}>
-        Renseignez votre prénom et nom, puis cliquez sur le bouton pour
-        démarrer. Une fois la conversation terminée, votre CV et votre
-        lettre de motivation seront générés automatiquement.
+        Renseignez vos informations ci-dessous, puis démarrez la
+        conversation avec notre assistante. Une fois terminée, votre CV et
+        votre lettre de motivation seront générés automatiquement.
       </p>
 
-      {!agentId && (
-        <p style={{ color: "#993C1D", fontSize: 14 }}>
-          NEXT_PUBLIC_ELEVENLABS_AGENT_ID n'est pas configuré (voir .env.example).
-        </p>
-      )}
+      <div style={{ marginTop: 24, display: "flex", flexDirection: "column", gap: 10, alignItems: "center" }}>
+        <input
+          type="text"
+          placeholder="Prénom *"
+          value={prenom}
+          onChange={(e) => setPrenom(e.target.value)}
+          style={inputStyle}
+        />
+        <input
+          type="text"
+          placeholder="Nom"
+          value={nom}
+          onChange={(e) => setNom(e.target.value)}
+          style={inputStyle}
+        />
+        <input
+          type="tel"
+          placeholder="Numéro de téléphone (pour le CV)"
+          value={telephone}
+          onChange={(e) => setTelephone(e.target.value)}
+          style={inputStyle}
+        />
+        <input
+          type="url"
+          placeholder="Lien LinkedIn (optionnel)"
+          value={linkedinUrl}
+          onChange={(e) => setLinkedinUrl(e.target.value)}
+          style={inputStyle}
+        />
 
-      {!started && (
-        <div style={{ marginTop: 24, display: "flex", flexDirection: "column", gap: 10, alignItems: "center" }}>
-          <input
-            type="text"
-            placeholder="Prénom"
-            value={prenom}
-            onChange={(e) => setPrenom(e.target.value)}
-            style={{
-              width: "100%",
-              maxWidth: 320,
-              padding: 10,
-              border: "1px solid #D3D1C7",
-              borderRadius: 8,
-            }}
-          />
-          <input
-            type="text"
-            placeholder="Nom"
-            value={nom}
-            onChange={(e) => setNom(e.target.value)}
-            style={{
-              width: "100%",
-              maxWidth: 320,
-              padding: 10,
-              border: "1px solid #D3D1C7",
-              borderRadius: 8,
-            }}
-          />
-          <button
-            onClick={() => setStarted(true)}
-            disabled={!canStart}
-            style={{
-              marginTop: 8,
-              padding: "10px 20px",
-              border: "none",
-              background: canStart ? "#2C2C2A" : "#B8B6AC",
-              color: "white",
-              borderRadius: 8,
-              cursor: canStart ? "pointer" : "not-allowed",
-            }}
-          >
-            Commencer
-          </button>
-        </div>
-      )}
-
-      {started && agentId && sessionId && (
-        <div style={{ marginTop: 32 }}>
-          <Script
-            src="https://unpkg.com/@elevenlabs/convai-widget-embed"
-            strategy="afterInteractive"
-          />
-          {/* @ts-ignore - custom element ElevenLabs, pas typé par React */}
-          <elevenlabs-convai
-            agent-id={agentId}
-            dynamic-variables={JSON.stringify({
-              session_id: sessionId,
-              prenom,
-              nom,
-            })}
-          />
-          <p style={{ color: "#888780", fontSize: 12, marginTop: 16 }}>
-            Session : {sessionId}
-          </p>
-        </div>
-      )}
+        <button
+          onClick={commencer}
+          disabled={!canSubmit}
+          style={{
+            marginTop: 8,
+            padding: "10px 20px",
+            border: "none",
+            background: canSubmit ? "#2C2C2A" : "#B8B6AC",
+            color: "white",
+            borderRadius: 8,
+            cursor: canSubmit ? "pointer" : "not-allowed",
+          }}
+        >
+          Continuer
+        </button>
+      </div>
     </main>
   );
 }
+
+const inputStyle: CSSProperties = {
+  width: "100%",
+  maxWidth: 360,
+  padding: 10,
+  border: "1px solid #D3D1C7",
+  borderRadius: 8,
+};
