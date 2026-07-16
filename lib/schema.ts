@@ -5,41 +5,55 @@ import { z } from "zod";
 // S'ils ne matchent pas exactement, adapte la fonction mapWebhookPayloadToCVData
 // dans app/api/elevenlabs-webhook/route.ts plutôt que de casser ce schéma.
 
+// L'agent renvoie parfois `null` pour un champ qu'il n'a pas pu obtenir
+// (ex: "annee": null quand la personne n'a pas donné l'année d'un diplôme).
+// z.string().default("") ne couvre que le cas `undefined`, pas `null` —
+// ce helper couvre les deux, pour éviter de corriger un champ à la fois à
+// chaque nouvelle variation rencontrée en prod.
+const nullableString = () =>
+  z.preprocess((v) => (v == null ? "" : v), z.string()).default("");
+
 export const ExperienceSchema = z.object({
-  poste: z.string().default(""),
-  entreprise: z.string().default(""),
-  dates: z.string().default(""),
-  missions: z.array(z.string()).default([]),
-  resultats: z.array(z.string()).default([]),
+  poste: nullableString(),
+  entreprise: nullableString(),
+  dates: nullableString(),
+  missions: z.array(nullableString()).default([]),
+  resultats: z.array(nullableString()).default([]),
 });
 
 export const FormationSchema = z.object({
-  diplome: z.string().default(""),
-  etablissement: z.string().default(""),
-  annee: z.string().default(""),
+  diplome: nullableString(),
+  etablissement: nullableString(),
+  annee: nullableString(),
 });
 
 export const CompetenceOutilSchema = z.object({
-  nom: z.string(),
-  niveau: z.string().default("Intermédiaire"),
+  nom: nullableString(),
+  niveau: z.preprocess(
+    (v) => (v == null ? "Intermédiaire" : v),
+    z.string()
+  ).default("Intermédiaire"),
 });
 
 export const CompetenceLangueSchema = z.object({
-  nom: z.string(),
-  niveau: z.string().default("Intermédiaire"),
+  nom: nullableString(),
+  niveau: z.preprocess(
+    (v) => (v == null ? "Intermédiaire" : v),
+    z.string()
+  ).default("Intermédiaire"),
 });
 
 export const CVDataSchema = z.object({
   contact: z
     .object({
-      nom: z.string().optional(),
-      telephone: z.string().optional(),
-      email: z.string().optional(),
-      linkedin: z.string().optional(),
+      nom: nullableString().optional(),
+      telephone: nullableString().optional(),
+      email: nullableString().optional(),
+      linkedin: nullableString().optional(),
     })
     .default({}),
-  secteur_recherche: z.string().default(""),
-  resume_profil: z.string().optional(),
+  secteur_recherche: nullableString(),
+  resume_profil: nullableString().optional(),
   experiences: z.array(ExperienceSchema).default([]),
   formations: z.array(FormationSchema).default([]),
   competences: z
@@ -48,7 +62,7 @@ export const CVDataSchema = z.object({
       langues: z.array(CompetenceLangueSchema).default([]),
     })
     .default({ outils: [], langues: [] }),
-  hobbies: z.array(z.string()).default([]),
+  hobbies: z.array(nullableString()).default([]),
 });
 
 export type CVData = z.infer<typeof CVDataSchema>;
